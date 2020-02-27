@@ -112,6 +112,7 @@ typedef struct {
 } MyIActiveScriptSite;
 
 // internal structure
+/* KW: Structure that contains the information to load a .NET assembly */
 typedef struct _DONUT_ASSEMBLY {
     ICLRMetaHost    *icmh;
     ICLRRuntimeInfo *icri;

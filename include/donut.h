@@ -267,7 +267,9 @@ typedef struct _DONUT_INSTANCE {
     union {
       uint64_t  hash[64];                     // holds up to 64 api hashes
       void     *addr[64];                     // holds up to 64 api addresses
+      
       // include prototypes only if header included from loader.h
+      /* KW: This struct will hold the memory address for the following function calls, which is allocated during execution. */
       #ifdef LOADER_H
       struct {
         // imports from kernel32.dll or kernelbase.dll

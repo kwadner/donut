@@ -43,6 +43,7 @@
 #define DLL_NAMES "ole32;oleaut32;wininet;mscoree;shell32"
  
 // These must be in the same order as the DONUT_INSTANCE structure defined in donut.h
+/* KW: They define what library functions will be used */
 static API_IMPORT api_imports[] = { 
   {KERNEL32_DLL, "LoadLibraryA"},
   {KERNEL32_DLL, "GetProcAddress"},
@@ -107,6 +108,7 @@ static API_IMPORT api_imports[] = {
 };
 
 // required to load .NET assemblies
+/* These are COM GUIDs and will (should) be the same on all systems */
 static GUID xCLSID_CorRuntimeHost = {
   0xcb2f6723, 0xab3a, 0x11d2, {0x9c, 0x40, 0x00, 0xc0, 0x4f, 0xa3, 0x0a, 0x3e}};
 
